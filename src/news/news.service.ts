@@ -12,7 +12,7 @@ export class NewsService {
   private readonly logger = new Logger(NewsService.name);
   private sources: Promise<string>;
   constructor(
-    @InjectModel('Headlines') private readonly newsModel: Model<News>,
+    @InjectModel('Headlines') private readonly headlineModel: Model<News>,
     @InjectModel('Article') private readonly articleModel: Model<News>,
   ) {
     this.sources = this.getSources();
@@ -21,19 +21,15 @@ export class NewsService {
 
   // get news article
   @Cron(CronExpression.EVERY_10_MINUTES)
-  async SaveHeadlines(
-    category: string,
-    language: string,
-    country: string,
-  ): Promise<Article[]> {
+  async SaveHeadlines(): Promise<Article[]> {
     this.logger.log('called headline cron Job');
-    const body = { category, language, country };
+    const body = { sources: await this.sources };
     const response = await this.NewsAPI.v2.topHeadlines(body);
     const articles: Article[] = response.articles;
     for (let index = 0; index < articles.length; index++) {
       const element = articles[index];
       console.log(element);
-      const newArticles = new this.newsModel(element);
+      const newArticles = new this.headlineModel(element);
       const { author, title, publishedAt } = element;
       const headlineExist = await newArticles.collection.findOne({
         author,
@@ -41,7 +37,6 @@ export class NewsService {
         publishedAt,
       });
       if (headlineExist === null) newArticles.save();
-      newArticles.save();
     }
 
     return articles;
@@ -80,11 +75,20 @@ export class NewsService {
   async getSources(): Promise<string> {
     let sources = await this.NewsAPI.v2.sources();
     console.log(sources['id']);
-    // const data = JSON.parse(sources);
     sources = sources['sources'].map(e => e.id);
     return sources.join();
   }
-  async getHeadlines(){
-      
+  async getHeadlines(from: string, to: string): Promise<News[]> {
+    const headline: News[] = await this.headlineModel
+      .find({ publishedAt: { $gte: to, $lte: from } })
+      .exec();
+    return headline;
+  }
+
+  async getArticles(from: string, to: string): Promise<News[]> {
+    const articles: News[] = await this.articleModel
+      .find({ publishedAt: { $gte: to, $lte: from } })
+      .exec();
+    return articles;
   }
 }
